@@ -24,24 +24,39 @@ function Canvas() {
     },
   ]);
   const [activeLayerId, setActiveLayerId] = useState(layers[0]?.id);
+  const [zoomOrigin, setZoomOrigin] = useState({ x: 0, y: 0 });
 
   // Handle zoom with mouse wheel
   useEffect(() => {
     const handleWheel = (e) => {
-      if (e.ctrlKey) {
-        e.preventDefault();
-        const delta = e.deltaY > 0 ? 0.9 : 1.1;
-        setScale((prevScale) => Math.max(0.1, Math.min(5, prevScale * delta)));
-      }
+      // Remove a verificação do ctrlKey
+      e.preventDefault();
+
+      // Calcula a posição do mouse relativa ao canvas
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // Determina o fator de zoom com uma sensibilidade menor
+      const delta = e.deltaY > 0 ? 0.95 : 1.05;
+      const newScale = Math.max(0.1, Math.min(5, scale * delta));
+
+      // Calcula o novo ponto de origem do zoom
+      setZoomOrigin({
+        x: x - (x - zoomOrigin.x) * (newScale / scale),
+        y: y - (y - zoomOrigin.y) * (newScale / scale),
+      });
+
+      setScale(newScale);
     };
 
     const canvasElement = canvasRef.current;
-    canvasElement.addEventListener('wheel', handleWheel, { passive: false });
+    canvasElement?.addEventListener('wheel', handleWheel, { passive: false });
 
     return () => {
       canvasElement?.removeEventListener('wheel', handleWheel);
     };
-  }, []);
+  }, [scale, zoomOrigin]);
 
   // Handle panning with space + drag
   useEffect(() => {
@@ -49,6 +64,9 @@ function Canvas() {
       if (e.code === 'Space') {
         setIsPanning(true);
         document.body.style.cursor = 'grab';
+        if (contentRef.current) {
+          contentRef.current.style.cursor = 'grab';
+        }
       }
     };
 
@@ -56,6 +74,9 @@ function Canvas() {
       if (e.code === 'Space') {
         setIsPanning(false);
         document.body.style.cursor = 'default';
+        if (contentRef.current) {
+          contentRef.current.style.cursor = 'default';
+        }
       }
     };
 
@@ -88,6 +109,12 @@ function Canvas() {
       const handleDragEnd = () => {
         document.removeEventListener('mousemove', handleDragMove);
         document.removeEventListener('mouseup', handleDragEnd);
+        if (contentRef.current) {
+          contentRef.current.classList.remove('grabbing');
+          if (isPanning) {
+            contentRef.current.classList.add('grab');
+          }
+        }
       };
 
       document.addEventListener('mousemove', handleDragMove);
@@ -189,19 +216,39 @@ function Canvas() {
 
   const contentStyle = {
     transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+    transformOrigin: `${zoomOrigin.x}px ${zoomOrigin.y}px`,
   };
 
   return (
     <div className="canvas-container" ref={canvasRef}>
       <Toolbar onSelectTool={handleToolSelect} />
-
       <LayersPanel layers={layers} onLayerAction={handleLayerAction} />
-
       <div
-        className={`canvas-content ${isPanning ? 'grabbing' : 'grab'}`}
+        className={`canvas-content ${
+          isPanning
+            ? contentRef.current?.style.cursor === 'grabbing'
+              ? 'grabbing'
+              : 'grab'
+            : ''
+        }`}
         ref={contentRef}
         style={contentStyle}
-        onMouseDown={handleDragStart}
+        onMouseDown={(e) => {
+          if (isPanning) {
+            e.preventDefault();
+            if (contentRef.current) {
+              contentRef.current.classList.remove('grab');
+              contentRef.current.classList.add('grabbing');
+            }
+            handleDragStart(e);
+          }
+        }}
+        onMouseUp={() => {
+          if (isPanning && contentRef.current) {
+            contentRef.current.classList.remove('grabbing');
+            contentRef.current.classList.add('grab');
+          }
+        }}
       >
         {/* Render visible layers and their elements */}
         {layers
