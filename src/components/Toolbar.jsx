@@ -1,10 +1,12 @@
+import '../styles/Toolbar.css';
+
 function Toolbar({ onSelectTool }) {
   return (
     <div className="toolbar">
-      <button onClick={() => onSelectTool('draw')}>Pincel</button>
-      <button onClick={() => onSelectTool('rectangle')}>Retângulo</button>
-      <button onClick={() => onSelectTool('circle')}>Círculo</button>
-      <button onClick={() => onSelectTool('line')}>Linha</button>
+      <button onClick={() => onSelectTool('select')}>Select</button>
+      <button onClick={() => onSelectTool('draw')}>Draw</button>
+      <button onClick={() => onSelectTool('rectangle')}>Rectangle</button>
+      <button onClick={() => onSelectTool('circle')}>Circle</button>
     </div>
   );
 }
