@@ -209,6 +209,15 @@ function Canvas() {
         break;
       }
 
+      case 'reorder': {
+        setLayers(action.layers);
+        // Mantenha a seleção atual se a camada ainda existir
+        if (!action.layers.find((layer) => layer.id === activeLayerId)) {
+          setActiveLayerId(action.layers[0]?.id);
+        }
+        break;
+      }
+
       default:
         console.log('Unknown action:', action);
     }

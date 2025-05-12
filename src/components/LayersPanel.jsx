@@ -1,15 +1,5 @@
-import { useEffect, useState } from 'react';
-import {
-  BiChevronDown,
-  BiChevronUp,
-  BiHide,
-  BiLayerMinus,
-  BiLayerPlus,
-  BiRename,
-  BiShow,
-  BiTrash,
-  BiX,
-} from 'react-icons/bi';
+import { useEffect, useRef, useState } from 'react';
+import { BiHide, BiLayerPlus, BiShow, BiTrash, BiX } from 'react-icons/bi';
 import '../styles/LayersPanel.css';
 
 function LayersPanel({ layers = [], onLayerAction }) {
@@ -17,8 +7,11 @@ function LayersPanel({ layers = [], onLayerAction }) {
   const [selectedLayerId, setSelectedLayerId] = useState(null);
   const [editingLayerId, setEditingLayerId] = useState(null);
   const [editingName, setEditingName] = useState('');
+  const [draggedLayer, setDraggedLayer] = useState(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
+  const [dragPosition, setDragPosition] = useState(null); // 'top', 'bottom', or 'between'
+  const layerRefs = useRef({});
 
-  // Select the first layer when the component mounts
   useEffect(() => {
     if (layers.length > 0 && !selectedLayerId) {
       setSelectedLayerId(layers[0].id);
@@ -49,15 +42,11 @@ function LayersPanel({ layers = [], onLayerAction }) {
     onLayerAction({ type: 'visibility', layerId, isVisible: !isVisible });
   };
 
-  const handleMoveLayer = (e, layerId, direction) => {
-    e.stopPropagation();
-    onLayerAction({ type: 'move', layerId, direction });
-  };
-
-  const startEditing = (e, layer) => {
-    e.stopPropagation();
-    setEditingLayerId(layer.id);
-    setEditingName(layer.name);
+  const handleDoubleClick = (e, layer) => {
+    if (e.target.classList.contains('layer-name')) {
+      setEditingLayerId(layer.id);
+      setEditingName(layer.name);
+    }
   };
 
   const handleNameChange = (e) => {
@@ -65,21 +54,95 @@ function LayersPanel({ layers = [], onLayerAction }) {
   };
 
   const saveLayerName = () => {
-    if (editingLayerId) {
+    if (editingLayerId && editingName.trim()) {
       onLayerAction({
         type: 'rename',
         layerId: editingLayerId,
-        name: editingName,
+        name: editingName.trim(),
       });
       setEditingLayerId(null);
     }
   };
 
-  // Handle Enter key press to save layer name
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
       saveLayerName();
     }
+  };
+
+  const handleDragStart = (e, layer) => {
+    e.stopPropagation();
+    setDraggedLayer(layer);
+    e.dataTransfer.setData('text/plain', layer.id);
+    e.currentTarget.classList.add('dragging');
+  };
+
+  const getDropPosition = (mouseY, rect, index) => {
+    const relativeY = mouseY - rect.top;
+    const height = rect.height;
+    const threshold = height * 0.3; // 30% da altura do item
+
+    if (relativeY < threshold) {
+      return 'top';
+    } else if (relativeY > height - threshold) {
+      return 'bottom';
+    } else {
+      return index === 0 ? 'top' : 'bottom';
+    }
+  };
+
+  const handleDragOver = (e, targetLayer, index) => {
+    e.preventDefault();
+    if (!draggedLayer || targetLayer.id === draggedLayer.id) return;
+
+    const rect = layerRefs.current[targetLayer.id].getBoundingClientRect();
+    const mouseY = e.clientY;
+    const position = getDropPosition(mouseY, rect, index);
+
+    // Atualiza a posição apenas se houver mudança
+    if (dragPosition !== position || dragOverIndex !== index) {
+      setDragOverIndex(index);
+      setDragPosition(position);
+    }
+  };
+
+  const handleDragOverList = (e) => {
+    e.preventDefault();
+    e.currentTarget.classList.add('receiving-drag');
+  };
+
+  const handleDragLeaveList = (e) => {
+    e.currentTarget.classList.remove('receiving-drag');
+  };
+
+  const handleDrop = (e, targetLayer, index) => {
+    const element = layerRefs.current[targetLayer.id];
+    element.classList.add('dropping');
+    setTimeout(() => element.classList.remove('dropping'), 600);
+
+    e.preventDefault();
+    if (!draggedLayer) return;
+
+    const draggedIndex = layers.findIndex((l) => l.id === draggedLayer.id);
+    let newIndex = index;
+
+    if (dragPosition === 'bottom') {
+      newIndex += 1;
+    }
+
+    // Ajusta o índice se estiver movendo para baixo
+    if (draggedIndex < newIndex) {
+      newIndex--;
+    }
+
+    const newLayers = [...layers];
+    const [removed] = newLayers.splice(draggedIndex, 1);
+    newLayers.splice(newIndex, 0, removed);
+
+    onLayerAction({ type: 'reorder', layers: newLayers });
+    setDraggedLayer(null);
+    setDragOverIndex(null);
+    setDragPosition(null);
   };
 
   return (
@@ -97,17 +160,34 @@ function LayersPanel({ layers = [], onLayerAction }) {
 
       {!isCollapsed && (
         <>
-          <div className="layers-list">
+          <div
+            className="layers-list"
+            onDragOver={handleDragOverList}
+            onDragLeave={handleDragLeaveList}
+          >
             {layers.length === 0 ? (
               <div className="no-layers-message">Nenhuma camada criada</div>
             ) : (
-              layers.map((layer) => (
+              layers.map((layer, index) => (
                 <div
                   key={layer.id}
+                  ref={(el) => (layerRefs.current[layer.id] = el)}
                   className={`layer-item ${
+                    draggedLayer?.id === layer.id ? 'dragging' : ''
+                  } ${dragOverIndex === index ? `drop-${dragPosition}` : ''} ${
                     selectedLayerId === layer.id ? 'selected' : ''
                   }`}
+                  draggable={true}
+                  onDragStart={(e) => handleDragStart(e, layer, index)}
+                  onDragOver={(e) => handleDragOver(e, layer, index)}
+                  onDrop={(e) => handleDrop(e, layer, index)}
+                  onDragEnd={() => {
+                    setDraggedLayer(null);
+                    setDragOverIndex(null);
+                    setDragPosition(null);
+                  }}
                   onClick={() => handleLayerSelect(layer.id)}
+                  onDoubleClick={(e) => handleDoubleClick(e, layer)}
                 >
                   <div className="layer-visibility">
                     <button
@@ -141,32 +221,6 @@ function LayersPanel({ layers = [], onLayerAction }) {
                   </div>
 
                   <div className="layer-controls">
-                    <button
-                      className="control-btn"
-                      onClick={(e) => startEditing(e, layer)}
-                      title="Renomear"
-                    >
-                      <BiRename />
-                    </button>
-
-                    <button
-                      className="control-btn"
-                      onClick={(e) => handleMoveLayer(e, layer.id, 'up')}
-                      disabled={layers.indexOf(layer) === 0}
-                      title="Mover para cima"
-                    >
-                      <BiChevronUp />
-                    </button>
-
-                    <button
-                      className="control-btn"
-                      onClick={(e) => handleMoveLayer(e, layer.id, 'down')}
-                      disabled={layers.indexOf(layer) === layers.length - 1}
-                      title="Mover para baixo"
-                    >
-                      <BiChevronDown />
-                    </button>
-
                     <button
                       className="control-btn delete"
                       onClick={(e) => handleDeleteLayer(e, layer.id)}
